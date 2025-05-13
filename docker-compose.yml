@@ -8,16 +8,16 @@ services:
     ports:
       - "5672:5672" # AMQP
       - "15672:15672" # Web UI
-      - "15692:15692" # <== Порт для Prometheus метрик
+      - "15692:15692" # Prometheus metrics
     environment:
-      - RABBITMQ_DEFAULT_USER
-      - RABBITMQ_DEFAULT_PASS
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
     networks:
       - monitoring
 
   tempo:
     image: grafana/tempo:2.2.2
+    container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo/tempo.yaml:/etc/tempo.yaml
@@ -28,25 +28,23 @@ services:
     networks:
       - monitoring
 
-
   grafana:
     image: grafana/grafana:10.2.3
+    container_name: grafana
     ports:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
-
     volumes:
-    - rabbitmq-prometheus_grafana:/var/lib/grafana
-    - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/rabbitmq.yaml
-    - ./grafana/datasources.yml:/etc/grafana/provisioning/datasources/prometheus.yaml
-    - ./grafana/dashboards:/dashboards
+      - rabbitmq-prometheus_grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
     depends_on:
       - tempo
     networks:
       - monitoring
-
   prometheus:
     container_name: prometheus
     image: prom/prometheus:v2.48.0
@@ -60,38 +58,28 @@ services:
       - monitoring
 
   rabbitmq-exporter:
-      image: kbudde/rabbitmq-exporter
-      environment:
-        RABBIT_USER: admin
-        RABBIT_PASSWORD: admin
-        RABBIT_URL: http://rabbitmq:15672
-      ports:
-        - "9419:9419"
-      depends_on:
-        - rabbitmq
-      networks:
+    image: kbudde/rabbitmq-exporter
+    environment:
+      RABBIT_USER: admin
+      RABBIT_PASSWORD: admin
+      RABBIT_URL: http://rabbitmq:15672
+    ports:
+      - "9419:9419"
+    depends_on:
+       - rabbitmq
+    networks:
       - monitoring
   alertmanager:
     image: prom/alertmanager
     hostname: alertmanager
     container_name: alertmanager
-
-
     ports:
       - "9093:9093"
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
     networks:
       - monitoring
-      
-
-
-networks:
-  monitoring:
-    driver: bridge
-
-
-node-exporter:
+  node-exporter:
     command:
       - "--path.procfs=/host/proc"
       - "--path.rootfs=/rootfs"
@@ -107,20 +95,26 @@ node-exporter:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
-    cadvisor:
-      expose:
-        - 8080
-      # https://hub.docker.com/r/google/cadvisor/tags
-      image: gcr.io/cadvisor/cadvisor:v0.52.1
-      networks:
-        - monitoring
-      volumes:
-        - /:/rootfs:ro
-        - /var/run:/var/run:rw
-        - /sys:/sys:ro
-        - /var/lib/docker/:/var/lib/docker:ro
-        #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
-
+  cadvisor:
+    expose:
+      - 8080
+    # https://hub.docker.com/r/google/cadvisor/tags
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    networks:
+      - monitoring
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
 volumes:
+  tempo_data:
   rabbitmq-prometheus_prometheus:
   rabbitmq-prometheus_grafana:
+  
+networks:
+  monitoring:
+    driver: bridge
+
+  
